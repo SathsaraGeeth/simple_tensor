@@ -12,8 +12,8 @@
 # define MAX_SIZE SIZE_MAX
 
 typedef enum {
-    FP64,
-    FP32,
+    REAL64,
+    REAL32,
     INT64,
     INT32,
     INT16,
@@ -27,8 +27,9 @@ typedef enum {
 
 typedef struct {
     void*       data;
-    dtype_t     dtype;
     size_t      size;
+    dtype_t     dtype;
+    size_t      dtype_size;
     size_t*     shape;
     size_t*     strides;
     size_t      rank;
@@ -136,18 +137,18 @@ tensor* tensor_op_view_expand (tensor* t, size_t new_rank, const size_t* new_sha
 
 
 // 4. Utility Functions <util>
-void*  tensor_util_dptr (const tensor* t, error_t* error);
-
 // 4.1. Internal Utilities <_util_>
-size_t tensor__util__dtype_size       (dtype_t dtype);
+const  void*  tensor__util__dptr      (const tensor* t, error_t* error);
+size_t tensor__util__dtype_size       (dtype_t dtype, error_t* error);
 bool   tensor__util__is_contiguous    (const tensor* t, error_t* error);
-size_t tensor__util__numel            (const tensor* t, error_t* error);
 size_t tensor__util__offset_from_index(const tensor* t, const size_t* indices, error_t* error);
 bool   tensor__util__shape_equal      (const tensor* a, const tensor* b, error_t* error);
 bool   tensor__util__is_broadcastable (const tensor* a, const tensor* b, error_t* error);
 void   tensor__util__compute_strides  (size_t rank, const size_t* shape, size_t* strides);
 
 // 4.2. Sheduling/Performance Utilities <__util__>
+
+
 
 // 5. Higher Level Operations
 // 5.1. Linear Algebra <linalg>

@@ -1,6 +1,6 @@
 #include "../include/tensor.h"
 
-#define STUB {if(error){error->code = ERR_NOT_IMPLEMENTED; error->msg = "not implemented";}}
+#define STUB {if(e){e->code = ERR_NOT_IMPLEMENTED; e->msg = "not implemented";}}
 
 /* Memory */
 tensor* tensor_mem_alloc (size_t rank, const size_t* shape, dtype_t dtype, error_t* error) {
@@ -50,8 +50,10 @@ tensor* tensor_mem_alloc (size_t rank, const size_t* shape, dtype_t dtype, error
         if (error->code != ERR_OK) goto fail;
     }
 
-    size_t dtype_size = tensor__util__dtype_size(dtype);
+    size_t dtype_size = tensor__util__dtype_size(dtype, error);
     if (error->code != ERR_OK) goto fail;
+    t->dtype_size = dtype_size;
+
     if (t->size > SIZE_MAX / dtype_size) {
         error->code = ERR_MALLOC_FAIL;
         error->msg  = "tensor size overflow";
@@ -84,9 +86,7 @@ tensor* tensor_mem_init  (size_t rank, const size_t* shape, dtype_t dtype, const
     tensor* t = tensor_mem_alloc(rank, shape, dtype, error);
     if (!t) return NULL;
 
-    size_t dtype_size = tensor__util__dtype_size(dtype);
-
-    memcpy(t->data, data, dtype_size * t->size);
+    memcpy(t->data, data, t->dtype_size * t->size);
     return t;
 }
 
@@ -130,7 +130,7 @@ dtype_t tensor_meta_dtype(const tensor* t, error_t* error) {
     }
     return t->dtype;
 }
-size_t tensor_meta_size(const tensor* t, error_t* error) {
+size_t  tensor_meta_size(const tensor* t, error_t* error) {
     if (error) {
         error->code = ERR_OK;
         error->msg  = NULL;
@@ -158,7 +158,7 @@ size_t* tensor_meta_shape(const tensor* t, error_t* error) {
     }
     return t->shape;
 }
-size_t tensor_meta_rank(const tensor* t, error_t* error) {
+size_t  tensor_meta_rank(const tensor* t, error_t* error) {
     if (error) {
         error->code = ERR_OK;
         error->msg  = NULL;
@@ -171,6 +171,228 @@ size_t tensor_meta_rank(const tensor* t, error_t* error) {
         return 0;
     }
     return t->rank;
+}
+
+/* Utils */
+const void*  tensor__util__dptr             (const tensor* t, error_t* error){
+    if (error) {
+        error->code = ERR_OK;
+        error->msg  = NULL;
+    }
+    if (!t) {
+        if (error) {
+            error->code = ERR_NULL_PTR;
+            error->msg  = "tensor is NULL";
+        }
+        return NULL;
+    }
+    return t->data;
+}
+
+size_t tensor__util__dtype_size       (dtype_t dtype, error_t* error) {
+    if (error) {
+        error->code = ERR_OK;
+        error->msg  = NULL;
+    }
+    switch (dtype) {
+        case REAL64:  return sizeof(double);
+        case REAL32:  return sizeof(float);
+        case INT64:   return sizeof(int64_t);
+        case INT32:   return sizeof(int32_t);
+        case INT16:   return sizeof(int16_t);
+        case INT8:    return sizeof(int8_t);
+        case UINT64:  return sizeof(uint64_t);
+        case UINT32:  return sizeof(uint32_t);
+        case UINT16:  return sizeof(uint16_t);
+        case UINT8:   return sizeof(uint8_t);
+        default:
+            if (error) {
+                error->code = ERR_INVALID_DTYPE;
+                error->msg  = "invalid dtype";
+            }
+            return 0;
+    }
+}
+
+bool   tensor__util__is_contiguous    (const tensor* t, error_t* error){
+    if (error) {
+        error->code = ERR_OK;
+        error->msg  = NULL;
+    }
+    if (!t) {
+        if (error) {
+            error->code = ERR_NULL_PTR;
+            error->msg  = "tensor is NULL";
+        }
+        return false;
+    }
+    if (t->rank == 0) {
+        return true;
+    }
+    if (!t->shape || !t->strides) {
+        if (error) {
+            error->code = ERR_INVALID_ARG;
+            error->msg  = "tensor shape or strides is NULL";
+        }
+        return false;
+    }
+
+    size_t expected_stride = t->dtype_size;
+    if (error->code != ERR_OK) return false;
+
+    for (size_t i = t->rank - 1; i >= 0; --i) {
+        if (t->strides[i] != expected_stride) {
+            return false;
+        }
+        expected_stride *= t->shape[i];
+    }
+    return true;
+}
+
+size_t tensor__util__offset_from_index(const tensor* t, const size_t* indices, error_t* error) {
+    if (error) {
+        error->code = ERR_OK;
+        error->msg  = NULL;
+    }
+    if (!t) {
+        if (error) {
+            error->code = ERR_NULL_PTR;
+            error->msg  = "tensor is NULL";
+        }
+        return 0;
+    }
+    if (!indices) {
+        if (error) {
+            error->code = ERR_NULL_PTR;
+            error->msg  = "indices is NULL";
+        }
+        return 0;
+    }
+    if (t->rank == 0) {
+        return 0;
+    }
+    if (!t->shape || !t->strides) {
+        if (error) {
+            error->code = ERR_INVALID_ARG;
+            error->msg  = "tensor shape or strides is NULL";
+        }
+        return 0;
+    }
+
+    size_t offset = 0;
+    for (size_t i = 0; i < t->rank; ++i) {
+        if (indices[i] >= t->shape[i]) {
+            if (error) {
+                error->code = ERR_OUT_OF_BOUNDS;
+                error->msg  = "index out of bounds";
+            }
+            return 0;
+        }
+        offset += indices[i] * t->strides[i];
+    }
+    return offset;
+}
+
+bool   tensor__util__shape_equal      (const tensor* a, const tensor* b, error_t* error) {
+    if (error) {
+        error->code = ERR_OK;
+        error->msg  = NULL;
+    }
+    if (!a || !b) {
+        if (error) {
+            error->code = ERR_NULL_PTR;
+            error->msg  = "tensor is NULL";
+        }
+        return false;
+    }
+    if (a->rank != b->rank) {
+        return false;
+    }
+    if (!a->shape || !b->shape) {
+        if (error) {
+            error->code = ERR_INVALID_ARG;
+            error->msg  = "shape is NULL";
+        }
+        return false;
+    }
+    for (size_t i = 0; i < a->rank; i++) {
+        if (a->shape[i] != b->shape[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool   tensor__util__is_broadcastable (const tensor* a, const tensor* b, error_t* error) {
+    if (error) {
+        error->code = ERR_OK;
+        error->msg  = NULL;
+    }
+    if (!a || !b) {
+        if (error) {
+            error->code = ERR_NULL_PTR;
+            error->msg  = "tensor is NULL";
+        }
+        return false;
+    }
+    size_t rank_a = a->rank;
+    size_t rank_b = b->rank;
+
+    const size_t* shape_a = a->shape;
+    const size_t* shape_b = b->shape;
+
+    if (!shape_a || !shape_b) {
+        if (error) {
+            error->code = ERR_INVALID_ARG;
+            error->msg  = "shape is NULL";
+        }
+        return false;
+    }
+
+    // iterate from the back (right-aligned)
+    size_t max_rank = (rank_a > rank_b) ? rank_a : rank_b;
+
+    for (size_t i = 0; i < max_rank; i++) {
+        size_t dim_a = (i < rank_a) ? shape_a[rank_a - 1 - i] : 1;
+        size_t dim_b = (i < rank_b) ? shape_b[rank_b - 1 - i] : 1;
+
+        if (dim_a != dim_b && dim_a != 1 && dim_b != 1) {
+            return false;
+        }
+    }
+    return true;
+}    
+
+void   tensor__util__compute_strides  (size_t rank, const size_t* shape, size_t* strides, error_t* error) {
+if (error) {
+        error->code = ERR_OK;
+        error->msg  = NULL;
+    }
+
+    if ((rank > 0) && (!shape || !strides)) {
+        if (error) {
+            error->code = ERR_NULL_PTR;
+            error->msg  = "shape or strides is NULL";
+        }
+        return;
+    }
+
+    if (rank == 0) {
+        return;
+    }
+
+    strides[rank - 1] = 1;
+
+    for (size_t i = rank - 1; i-- > 0; ) {
+        if (shape[i + 1] > 0 && strides[i + 1] > SIZE_MAX / shape[i + 1]) {
+            if (error) {
+                error->code = ERR_INVALID_SHAPE;
+                error->msg  = "stride overflow";
+            }
+            return;
+        }
+        strides[i] = strides[i + 1] * shape[i + 1];
+    }
 }
 
 
@@ -197,16 +419,7 @@ tensor* tensor_op_view_permute(tensor*t,const size_t*o,error_t*e) STUB
 tensor* tensor_op_view_slice(tensor*t,const size_t*a,const size_t*b,const size_t*c,error_t*e) STUB
 tensor* tensor_op_view_expand(tensor*t,size_t a,const size_t*b,error_t*e) STUB
 
-/* Utils */
-void* tensor_util_dptr(const tensor*t,error_t*e){ STUB; return NULL; }
 
-size_t tensor__util__dtype_size(dtype_t d){ return 0; }
-bool tensor__util__is_contiguous(const tensor*t,error_t*e){ STUB; return false; }
-size_t tensor__util__numel(const tensor*t,error_t*e){ STUB; return 0; }
-size_t tensor__util__offset_from_index(const tensor*t,const size_t*i,error_t*e){ STUB; return 0; }
-bool tensor__util__shape_equal(const tensor*a,const tensor*b,error_t*e){ STUB; return false; }
-bool tensor__util__is_broadcastable(const tensor*a,const tensor*b,error_t*e){ STUB; return false; }
-void tensor__util__compute_strides(size_t r,const size_t*s,size_t*o){}
 
 /* Linalg */
 tensor* tensor_linalg_matmul(const tensor*a,const tensor*b,error_t*e) STUB
