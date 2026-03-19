@@ -137,7 +137,6 @@ tensor* tensor_op_view_expand (tensor* t, size_t new_rank, const size_t* new_sha
 
 // 4. Utility Functions <util>
 void*  tensor_util_dptr (const tensor* t, error_t* error);
-size_t tensor_util_bsize(const tensor* t, error_t* error);
 
 // 4.1. Internal Utilities <_util_>
 size_t tensor__util__dtype_size       (dtype_t dtype);

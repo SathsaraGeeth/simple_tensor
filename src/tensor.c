@@ -99,14 +99,21 @@ void    tensor_mem_free  (tensor* t) {
     free(t);
 }
 
+tensor* tensor_mem_copy  (const tensor* t, error_t* error){
+    if (!error) return NULL;
 
+    error->code = ERR_OK;
+    error->msg  = NULL;
 
+    if (!t) {
+        error->code = ERR_NULL_PTR;
+        error->msg  = "tensor is NULL";
+        return NULL;
+    }
 
-
-
-
-
-tensor* tensor_mem_copy(const tensor* t,error_t*e) STUB
+    tensor* copy = tensor_mem_init(t->rank, t->shape, t->dtype, t->data, error);
+    return copy;
+}
 
 /* Meta */
 dtype_t tensor_meta_dtype(const tensor* t,error_t*e){ STUB; return 0; }
