@@ -1,0 +1,65 @@
+1. Tensors
+
+A. Memory
+1. Init/Allocating
+t = (shape, dtype, constant)
+shape    = (x1, x2, x3, ..., xn)
+dtype    = any number (real, int, complex)
+constant = 0 - zero tensor      (+ id.)
+           1 - ones tensor      (. id.)
+           c - constant tensor  (c is a number)
+           n - null initialied  (only memory is allocated)
+
+2. Dellocation
+t.free()
+
+3. Reference
+t1 = t2
+
+4. Memcopy
+t1 <- t2
+
+B. Hardware Implementation & Meta:
+- as an 1D array       : data_ptr
+- data[i][j][k]        : stride array   (i*stride[0]+j*stride[1]+k*stride[2])
+- shape array, size
+
+=> meta = {
+    data_ptr,
+    rank,
+    shape_arr_ptr,
+    stride_arr_ptr,
+    size,
+    dtype
+}
+- hardware try to keep the meta data closer due to C
+
+C. View Operations - these operations are done on the meta data not on the data
+1. Reshape
+2. Permutation
+3. Slice
+4. Extend
+
+
+D. Elementwise Arithmetic
+Syntax - 
+1. +                t = t1+t2
+2. -
+3. *
+4. /
+5. unary            t = -t1
+6. comparison       t = t1 > t2
+7. transcendental   t = sin(t1)
+8. etc
+
+E. Reduction
+D along some axis   t = t1(0)+
+
+F. Linear Algebra
+1. matmul           t = t1@t2   (t,t1,t2 should be rank 2 and size should mathches)
+2. dot              t = t1@t2   (t1,t2 should be vectors)
+3. etc
+
+
+
+2. Graph Execute Engine

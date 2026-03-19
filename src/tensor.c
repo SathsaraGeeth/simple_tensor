@@ -1,122 +1,103 @@
-// #include <string.h>
-// #include <stdlib.h>
-// #include <stdint.h>
-// #include <stdbool.h>
-// #include <stdio.h>
-// #include <sys/types.h>
-// #include "tensor.h"
-// #include <sys/types.h>
+#include "../include/tensor.h"
 
-// // 0. Internal Helpers
-// static size_t compute_numel(size_t rank, const size_t* shape) {
-//     size_t n = 1;
-//     for (size_t i = 0; i < rank; ++i) n *= shape[i];
-//     return n;
-// }
-// static size_t broadcast_prepare(
-//     const Tensor* a, const Tensor* b,
-//     size_t** out_shape,
-//     size_t** out_stride_a,
-//     size_t** out_stride_b
-// ) {
-//     size_t rank = (a->rank > b->rank) ? a->rank : b->rank;
-//     *out_shape    = malloc(rank * sizeof(size_t));
-//     *out_stride_a = malloc(rank * sizeof(size_t));
-//     *out_stride_b = malloc(rank * sizeof(size_t));
+#define STUB {if(error){error->code = ERR_NOT_IMPLEMENTED; error->msg = "not implemented";}}
 
-//     for (ssize_t i = rank - 1, ia = a->rank - 1, ib = b->rank - 1;
-//          i >= 0; --i, --ia, --ib) {
-//         size_t dim_a = (ia >= 0) ? a->shape[ia] : 1;
-//         size_t dim_b = (ib >= 0) ? b->shape[ib] : 1;
-//         if (dim_a != dim_b && dim_a != 1 && dim_b != 1) {
-//             fprintf(stderr, "Broadcast shape mismatch\n");
-//             exit(EXIT_FAILURE);
-//         }
-//         size_t dim = (dim_a > dim_b) ? dim_a : dim_b;
-//         (*out_shape)[i]    = dim;
-//         (*out_stride_a)[i] = (ia >= 0 && dim_a != 1) ? a->strides[ia] : 0;
-//         (*out_stride_b)[i] = (ib >= 0 && dim_b != 1) ? b->strides[ib] : 0;
-//     }
-//     return rank;
-// }
+/* Memory */
+tensor* tensor_mem_alloc (size_t rank, const size_t* shape, dtype_t dtype, error_t* error) {
+    if (!error) return NULL;
 
+    error->code = ERR_OK;
+    error->msg  = NULL;
 
+    // validata inputs
+    if (rank > 0 && !shape) {
+        error->code = ERR_NULL_PTR;
+        error->msg  = "shape is NULL";
+        return NULL;
+    }
 
+    // memory allocation
+    tensor* t = (tensor*)malloc(sizeof(tensor)); 
+    if (!t) {
+        error->code = ERR_MALLOC_FAIL;
+        error->msg  = "tensor allocation failed";
+        return NULL;
+    }
+    // struct assignment
+    t->rank    = rank;
+    t->dtype   = dtype;
+    t->data    = NULL;
+    t->shape   = NULL;
+    t->strides = NULL;
 
-// // 4. Utility Functions: _util
-// Tensor* tensor_util_copy(const Tensor* t) {
-//     tensor_util_assert_valid(t);
-//     Tensor* out = tensor_util_like(t);
-//     size_t bytes = t->size * tensor_util_dtype_size(t->dtype);
-//     memcpy(out->data, t->data, bytes);
-//     return out;
-// }
-// void tensor_util_print(const Tensor* t) {
-//     tensor_util_assert_valid(t);
-//     printf("Tensor(shape=[");
-//     for (size_t i = 0; i < t->rank; ++i) {
-//         printf("%zu", t->shape[i]);
-//         if (i < t->rank - 1) printf(", ");
-//     }
-//     printf("], dtype=%d)\n", t->dtype);
-// }
-// size_t tensor_util_index(const Tensor* t, const size_t* indices) {
-//     tensor_util_assert_valid(t);
-//     size_t offset = 0;
-//     for (size_t i = 0; i < t->rank; ++i) offset += indices[i] * t->strides[i];
-//     return offset;
-// }
-// size_t tensor_util_dtype_size(DTypes dtype) {
-//     switch (dtype) {
-//         case FP64:  return 8;
-//         case FP32:  return 4;
-//         case INT64: return 8;
-//         case INT32: return 4;
-//         case INT16: return 2;
-//         case INT8:  return 1;
-//         case UINT64:return 8;
-//         case UINT32:return 4;
-//         case UINT16:return 2;
-//         case UINT8: return 1;
-//         default:
-//             fprintf(stderr, "Unknown dtype\n");
-//             exit(EXIT_FAILURE);
-//     }
-// }
-// size_t tensor_util_numel(const Tensor* t) { return t->size; }
-// void tensor_util_compute_strides(Tensor* t) {
-//     t->strides[t->rank - 1] = 1;
-//     for (ssize_t i = (ssize_t)t->rank - 2; i >= 0; --i)
-//         t->strides[i] = t->strides[i+1] * t->shape[i+1];
-// }
-// bool tensor_util_is_contiguous(const Tensor* t) {
-//     size_t e = 1;
-//     for (ssize_t i = (ssize_t)t->rank - 1; i >= 0; --i) {
-//         if (t->strides[i] != e) return false;
-//         e *= t->shape[i];
-//     }
-//     return true;
-// }
-// size_t tensor_util_offset(const Tensor* t, const size_t* indices) {
-//     size_t offset = 0;
-//     for (size_t i = 0; i < t->rank; ++i) offset += indices[i] * t->strides[i];
-//     return offset;
-// }
-// void* tensor_util_data_ptr(Tensor* t, const size_t* indices) {
-//     return (uint8_t*)t->data + tensor_util_offset(t, indices) * tensor_util_dtype_size(t->dtype);
-// }
-// const void* tensor_util_const_data_ptr(const Tensor* t, const size_t* indices) {
-//     return (const uint8_t*)t->data + tensor_util_offset(t, indices) * tensor_util_dtype_size(t->dtype);
-// }
-// void tensor_util_assert_valid(const Tensor* t) {
-//     if (!t || !t->shape || !t->strides) {
-//         fprintf(stderr, "Invalid Tensor\n");
-//         exit(EXIT_FAILURE);
-//     }
-// }
-// Tensor* tensor_util_like(const Tensor* t) {
-//     return tensor_mem_alloc(t->rank, t->shape, t->dtype);
-// }
+    if (rank == 0) {            // scalar
+        t->size    = 1;
+    } else {                    // non-scalar
+        t->shape   = (size_t*) malloc(rank * sizeof(size_t));
+        t->strides = (size_t*) malloc(rank * sizeof(size_t));
+
+        if (!t->shape || !t->strides) {
+            error->code = ERR_MALLOC_FAIL;
+            error->msg  = "shape/strides allocation failed";
+            goto fail;
+        }
+
+        memcpy(t->shape, shape, rank * sizeof(size_t));
+        tensor__util__compute_strides(rank, t->shape, t->strides);
+        if (error->code != ERR_OK) goto fail;
+
+        t->size = tensor__util__numel(t, error);
+        if (error->code != ERR_OK) goto fail;
+    }
+
+    size_t dtype_size = tensor__util__dtype_size(dtype);
+    if (error->code != ERR_OK) goto fail;
+    if (t->size > SIZE_MAX / dtype_size) {
+        error->code = ERR_MALLOC_FAIL;
+        error->msg  = "tensor size overflow";
+        goto fail;
+    }
+    t->data = malloc(dtype_size * t->size);
+    if (!t->data) {
+        error->code = ERR_MALLOC_FAIL;
+        error->msg  = "data allocation failed";
+        goto fail;
+    }
+
+    return t;
+
+// fail cleanup
+fail:
+    if (t) tensor_mem_free(t);
+    return NULL;
+}
+
+tensor* tensor_mem_init  (size_t rank, const size_t* shape, dtype_t dtype, const void* data, error_t* error) {
+    if (!error) return NULL;
+
+    if (!data) {
+        error->code = ERR_NULL_PTR;
+        error->msg  = "data is NULL";
+        return NULL;
+    }
+
+    tensor* t = tensor_mem_alloc(rank, shape, dtype, error);
+    if (!t) return NULL;
+
+    size_t dtype_size = tensor__util__dtype_size(dtype);
+
+    memcpy(t->data, data, dtype_size * t->size);
+    return t;
+}
+
+void    tensor_mem_free  (tensor* t) {
+    if (!t) return;
+
+    free(t->shape);
+    free(t->strides);
+    free(t->data);
+    free(t);
+}
 
 
 
@@ -125,183 +106,67 @@
 
 
 
-// // 1. Memory Management: _mem
-// Tensor* tensor_mem_alloc(size_t rank, const size_t* shape, DTypes dtype) {
-//     Tensor* t = malloc(sizeof(Tensor));
-//     if (!t) exit(EXIT_FAILURE);
-//     t->rank = rank;
-//     t->dtype = dtype;
-//     t->shape = malloc(rank * sizeof(size_t));
-//     t->strides = malloc(rank * sizeof(size_t));
-//     for (size_t i = 0; i < rank; ++i) t->shape[i] = shape[i];
-//     t->size = compute_numel(rank, shape);
-//     tensor_util_compute_strides(t);
-//     t->data = malloc(t->size * tensor_util_dtype_size(dtype));
-//     return t;
-// }
-// void tensor_mem_free(Tensor* t) {
-//     if (!t) return;
-//     free(t->data);
-//     free(t->shape);
-//     free(t->strides);
-//     free(t);
-// }
+tensor* tensor_mem_copy(const tensor* t,error_t*e) STUB
 
+/* Meta */
+dtype_t tensor_meta_dtype(const tensor* t,error_t*e){ STUB; return 0; }
+size_t tensor_meta_size(const tensor* t,error_t*e){ STUB; return 0; }
+size_t* tensor_meta_shape(const tensor* t,error_t*e){ STUB; return NULL; }
+size_t tensor_meta_rank(const tensor* t,error_t*e){ STUB; return 0; }
 
+/* Elementwise */
+tensor* tensor_op_ew_prim(pri_op_t op,const tensor**i,error_t*e) STUB
+tensor* tensor_op_ew_ker(ew_ker_t k,const tensor**i,error_t*e) STUB
 
+/* Reduction */
+tensor* tensor_op_rdc_prim(pri_op_t op,const tensor*t,size_t axis,error_t*e) STUB
+tensor* tensor_op_rdc_ker(ew_ker_t k,const tensor*t,size_t axis,error_t*e) STUB
 
+/* Views */
+tensor* tensor_op_view_reshape(tensor*t,size_t a,const size_t*b,error_t*e) STUB
+tensor* tensor_op_view_permute(tensor*t,const size_t*o,error_t*e) STUB
+tensor* tensor_op_view_slice(tensor*t,const size_t*a,const size_t*b,const size_t*c,error_t*e) STUB
+tensor* tensor_op_view_expand(tensor*t,size_t a,const size_t*b,error_t*e) STUB
 
-// // 2. Metadata Access: _meta
-// size_t tensor_meta_rank(const Tensor* t) { return t->rank; }
-// size_t tensor_meta_size(const Tensor* t) { return t->size; }
-// DTypes tensor_meta_dtype(const Tensor* t) { return t->dtype; }
-// const size_t* tensor_meta_shape(const Tensor* t) { return t->shape; }
-// const size_t* tensor_meta_strides(const Tensor* t) { return t->strides; }
+/* Utils */
+void* tensor_util_dptr(const tensor*t,error_t*e){ STUB; return NULL; }
+size_t tensor_util_bsize(const tensor*t,error_t*e){ STUB; return 0; }
 
+size_t tensor__util__dtype_size(dtype_t d){ return 0; }
+bool tensor__util__is_contiguous(const tensor*t,error_t*e){ STUB; return false; }
+size_t tensor__util__numel(const tensor*t,error_t*e){ STUB; return 0; }
+size_t tensor__util__offset_from_index(const tensor*t,const size_t*i,error_t*e){ STUB; return 0; }
+bool tensor__util__shape_equal(const tensor*a,const tensor*b,error_t*e){ STUB; return false; }
+bool tensor__util__is_broadcastable(const tensor*a,const tensor*b,error_t*e){ STUB; return false; }
+void tensor__util__compute_strides(size_t r,const size_t*s,size_t*o){}
 
+/* Linalg */
+tensor* tensor_linalg_matmul(const tensor*a,const tensor*b,error_t*e) STUB
+tensor* tensor_linalg_dot(const tensor*a,const tensor*b,error_t*e) STUB
+tensor* tensor_linalg_mmac(const tensor*a,const tensor*b,const tensor*c,double x,double y,error_t*e) STUB
+tensor* tensor_linalg_transpose(const tensor*t,const size_t*p,error_t*e) STUB
+tensor* tensor_linalg_trace(const tensor*t,error_t*e) STUB
+tensor* tensor_linalg_diag(const tensor*t,error_t*e) STUB
+tensor* tensor_linalg_eye(size_t n,dtype_t d,error_t*e) STUB
+tensor* tensor_linalg_norm(const tensor*t,int ord,error_t*e) STUB
+tensor* tensor_linalg_solve_linear(const tensor*a,const tensor*b,error_t*e) STUB
+tensor* tensor_linalg_inverse(const tensor*t,error_t*e) STUB
+tensor* tensor_linalg_cholesky(const tensor*t,error_t*e) STUB
+tensor* tensor_linalg_qr(const tensor*t,tensor**q,tensor**r,error_t*e) STUB
+tensor* tensor_linalg_lu(const tensor*t,tensor**p,tensor**l,tensor**u,error_t*e) STUB
+tensor* tensor_linalg_eig(const tensor*t,tensor**v,error_t*e) STUB
+tensor* tensor_linalg_svd(const tensor*t,tensor**u,tensor**s,tensor**vt,error_t*e) STUB
 
+/* Data */
+tensor* tensor_from_buffer(void*d,size_t r,const size_t*s,dtype_t dt,error_t*e) STUB
+tensor* tensor_from_buffer_copy(const void*d,size_t r,const size_t*s,dtype_t dt,error_t*e) STUB
+tensor* tensor_from_array_1d(const void*d,size_t s,dtype_t dt,error_t*e) STUB
+tensor* tensor_from_nested(const void*d,size_t r,const size_t*s,dtype_t dt,error_t*e) STUB
+void* tensor_to_buffer(const tensor*t,error_t*e){ STUB; return NULL; }
+void* tensor_to_buffer_copy(const tensor*t,error_t*e){ STUB; return NULL; }
+void* tensor_to_array_1d(const tensor*t,error_t*e){ STUB; return NULL; }
+void* tensor_to_nested(const tensor*t,error_t*e){ STUB; return NULL; }
 
-// // 3.1 View Operations: _view
-// Tensor* tensor_op_view_reshape(Tensor* t, size_t new_rank, const size_t* new_shape) {
-//     tensor_util_assert_valid(t);
-//     if (compute_numel(new_rank, new_shape) != t->size) exit(EXIT_FAILURE);
-//     Tensor* out = malloc(sizeof(Tensor));
-//     *out = *t;
-//     out->rank = new_rank;
-//     out->shape = malloc(new_rank * sizeof(size_t));
-//     out->strides = malloc(new_rank * sizeof(size_t));
-//     for (size_t i = 0; i < new_rank; ++i) out->shape[i] = new_shape[i];
-//     tensor_util_compute_strides(out);
-//     return out;
-// }
-// Tensor* tensor_op_view_flatten(Tensor* t) {
-//     size_t s[1] = {t->size};
-//     return tensor_op_view_reshape(t, 1, s);
-// }
-
-
-
-
-
-// // 3.2 Elementwise Operations: _ew
-// Tensor* tensor_op_ew_add(const Tensor* a, const Tensor* b) {
-//     tensor_util_assert_valid(a);
-//     tensor_util_assert_valid(b);
-//     if (a->dtype != b->dtype || a->dtype != FP32) exit(EXIT_FAILURE);
-//     size_t* shape; size_t* sa; size_t* sb;
-//     size_t rank = broadcast_prepare(a, b, &shape, &sa, &sb);
-//     Tensor* out = tensor_mem_alloc(rank, shape, a->dtype);
-//     const float* da = a->data;
-//     const float* db = b->data;
-//     float* o = out->data;
-//     size_t* idx = calloc(rank, sizeof(size_t));
-//     for (size_t i = 0; i < out->size; ++i) {
-//         size_t off_a = 0;
-//         size_t off_b = 0;
-//         for (size_t d = 0; d < rank; ++d) {
-//             off_a += idx[d] * sa[d];
-//             off_b += idx[d] * sb[d];
-//         }
-//         o[i] = da[off_a] + db[off_b];
-//         for (ssize_t d = rank - 1; d >= 0; --d) {
-//             idx[d]++;
-//             if (idx[d] < shape[d]) break;
-//             idx[d] = 0;
-//         }
-//     }
-//     free(shape); free(sa); free(sb); free(idx);
-//     return out;
-// }
-
-
-
-
-
-
-// // 3.4 Scalar Operations: _sc
-// Tensor* tensor_op_sc_add(const Tensor* t, double val) {
-//     tensor_util_assert_valid(t);
-//     if (t->dtype != FP32) exit(EXIT_FAILURE);
-//     Tensor* out = tensor_util_like(t);
-//     float* restrict o = out->data;
-//     const float* restrict d = t->data;
-//     float v = (float)val;
-//     for (size_t i = 0; i < t->size; ++i) o[i] = d[i] + v;
-//     return out;
-// }
-// Tensor* tensor_op_sc_sub(const Tensor* t, double val) {
-//     return tensor_op_sc_add(t, -val);
-// }
-// Tensor* tensor_op_sc_mul(const Tensor* t, double val) {
-//     tensor_util_assert_valid(t);
-//     if (t->dtype != FP32) exit(EXIT_FAILURE);
-//     Tensor* out = tensor_util_like(t);
-//     float* restrict o = out->data;
-//     const float* restrict d = t->data;
-//     float v = (float)val;
-//     for (size_t i = 0; i < t->size; ++i) o[i] = d[i] * v;
-//     return out;
-// }
-// Tensor* tensor_op_sc_div(const Tensor* t, double val) {
-//     if (val == 0.0) exit(EXIT_FAILURE);
-//     return tensor_op_sc_mul(t, 1.0 / val);
-// }
-// Tensor* tensor_op_sc_neg(const Tensor* t) {
-//     return tensor_op_sc_mul(t, -1.0);
-// }
-// Tensor* tensor_op_sc_abs(const Tensor* t) {
-//     tensor_util_assert_valid(t);
-//     if (t->dtype != FP32) exit(EXIT_FAILURE);
-//     Tensor* out = tensor_util_like(t);
-//     float* restrict o = out->data;
-//     const float* restrict d = t->data;
-//     for (size_t i = 0; i < t->size; ++i) o[i] = (d[i] < 0) ? -d[i] : d[i];
-//     return out;
-// }
-
-
-
-
-
-
-
-
-
-
-
-// // ===== NOT IMPLEMENTED STUBS =====
-// #define NOT_IMPL(name) do { fprintf(stderr, name " not implemented\n"); exit(EXIT_FAILURE); } while(0)
-
-// // View
-// Tensor* tensor_op_view_broadcast(Tensor* t, size_t r, const size_t* s) { NOT_IMPL("view_broadcast"); }
-// Tensor* tensor_op_view_squeeze(Tensor* t) { NOT_IMPL("view_squeeze"); }
-// Tensor* tensor_op_view_unsqueeze(Tensor* t, size_t a) { NOT_IMPL("view_unsqueeze"); }
-// Tensor* tensor_op_view_permute(Tensor* t, const size_t* a) { NOT_IMPL("view_permute"); }
-// Tensor* tensor_op_view_concat(const Tensor** t, size_t n, size_t a) { NOT_IMPL("view_concat"); }
-
-// // Elementwise
-// Tensor* tensor_op_ew_sub(const Tensor* a,const Tensor* b){ NOT_IMPL("ew_sub"); }
-// Tensor* tensor_op_ew_mul(const Tensor* a,const Tensor* b){ NOT_IMPL("ew_mul"); }
-// Tensor* tensor_op_ew_div(const Tensor* a,const Tensor* b){ NOT_IMPL("ew_div"); }
-// Tensor* tensor_op_ew_pow(const Tensor* a,const Tensor* b){ NOT_IMPL("ew_pow"); }
-// Tensor* tensor_op_ew_min(const Tensor* a,const Tensor* b){ NOT_IMPL("ew_min"); }
-// Tensor* tensor_op_ew_max(const Tensor* a,const Tensor* b){ NOT_IMPL("ew_max"); }
-// Tensor* tensor_op_ew_eq(const Tensor* a,const Tensor* b){ NOT_IMPL("ew_eq"); }
-// Tensor* tensor_op_ew_neq(const Tensor* a,const Tensor* b){ NOT_IMPL("ew_neq"); }
-// Tensor* tensor_op_ew_gt(const Tensor* a,const Tensor* b){ NOT_IMPL("ew_gt"); }
-// Tensor* tensor_op_ew_gte(const Tensor* a,const Tensor* b){ NOT_IMPL("ew_gte"); }
-// Tensor* tensor_op_ew_lt(const Tensor* a,const Tensor* b){ NOT_IMPL("ew_lt"); }
-// Tensor* tensor_op_ew_lte(const Tensor* a,const Tensor* b){ NOT_IMPL("ew_lte"); }
-
-// // Reduction
-// Tensor* tensor_op_rd_sum(const Tensor* t,size_t a){ NOT_IMPL("rd_sum"); }
-// Tensor* tensor_op_rd_mean(const Tensor* t,size_t a){ NOT_IMPL("rd_mean"); }
-// Tensor* tensor_op_rd_max(const Tensor* t,size_t a){ NOT_IMPL("rd_max"); }
-// Tensor* tensor_op_rd_min(const Tensor* t,size_t a){ NOT_IMPL("rd_min"); }
-// Tensor* tensor_op_rd_argmax(const Tensor* t,size_t a){ NOT_IMPL("rd_argmax"); }
-// Tensor* tensor_op_rd_argmin(const Tensor* t,size_t a){ NOT_IMPL("rd_argmin"); }
-
-// // Linear Algebra
-// Tensor* tensor_op_la_dot(const Tensor* a,const Tensor* b){ NOT_IMPL("la_dot"); }
-// Tensor* tensor_op_la_matmul(const Tensor* a,const Tensor* b){ NOT_IMPL("la_matmul"); }
-// Tensor* tensor_op_la_transpose(const Tensor* t,const size_t* a){ NOT_IMPL("la_transpose"); }
+/* Debug */
+void tensor_print(const tensor*t,error_t*e) STUB
+void tensor_print_structure(const tensor*t,error_t*e) STUB

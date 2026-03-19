@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -Wall -O3 -Iinclude
 LDFLAGS = -ljpeg
 
-SRC = src/image.c src/inference.c src/utils.c src/tensor.c
+SRC = src/tensor.c
 OBJ = $(SRC:.c=.o)
 TARGET = libllinf.a
 

@@ -1,41 +1,44 @@
-from liblinf import DTypes, lib, LP_CTensor, c_size_p, c_void_p, ctypes
+from liblinf import *
 
 class Tensor:
-    def __init__(self, shape, dtype= "fp32"):
-        """
-        Initialize a Tensor.
-        :param shape: a tuple
-        :param dtype: a string from {fp64, fp32, int64, int32, int16, int8, uint64, uint32, uint16, uint8}
-        """
-        if not isinstance(shape, (tuple, list)):
-            raise TypeError(f"shape must be tuple or list, got {type(shape)}")
+    _DTYPE_MAP = {
+        "fp64": DTypes.FP64,
+        "fp32": DTypes.FP32,
+        "int64": DTypes.INT64,
+        "int32": DTypes.INT32,
+        "int16": DTypes.INT16,
+        "int8": DTypes.INT8,
+        "uint64": DTypes.UINT64,
+        "uint32": DTypes.UINT32,
+        "uint16": DTypes.UINT16,
+        "uint8": DTypes.UINT8,
+    }
+
+    def __init__(self, shape, dtype="fp32"):
+        if not isinstance(shape, (list, tuple)):
+            raise TypeError("shape must be list/tuple")
         if not all(isinstance(x, int) and x > 0 for x in shape):
-            raise ValueError(f"All dimensions in shape must be positive integers, got {shape}")
-        
-        if not isinstance(dtype, str):
-            raise TypeError(f"dtype must be string, got {type(dtype)}")
-        dtype_lower = dtype.lower()
-        if dtype_lower not in _dtype_map:
-            raise ValueError(f"Invalid dtype '{dtype}', must be one of {list(_dtype_map.keys())}")
+            raise ValueError("invalid shape")
+        if dtype not in self._DTYPE_MAP:
+            raise ValueError("invalid dtype")
 
-        self._dtype = _dtype_map[dtype_lower]
-
-        # Convert shape to C array
-        rank = len(shape)
-        c_shape = (ctypes.c_size_t * rank)(*shape)
-
-        # Allocate tensor via C library
-        self._c_tensor = lib.tensor_mem_alloc(rank, c_shape, self._dtype)
-        if not self._c_tensor:
-            raise MemoryError("Failed to allocate tensor")
-
-        # Store Python-friendly shape
+        self.rank = len(shape)
         self.shape = tuple(shape)
-        self.rank = rank
-        self.size = lib.tensor_meta_size(self._c_tensor)
+        self.dtype = self._DTYPE_MAP[dtype]
 
-    def __del__(self):
-        # Free C tensor memory
-        if hasattr(self, "_c_tensor") and self._c_tensor:
-            lib.tensor_mem_free(self._c_tensor)
-            self._c_tensor = None
+        c_shape = (c_size_t * self.rank)(*shape)
+
+        self._c_tensor = lib.tensor_mem_alloc(
+            c_size_t(self.rank),
+            c_shape,
+            self.dtype
+        )
+
+        if not self._c_tensor:
+            raise RuntimeError("allocation failed")
+
+    @classmethod
+    def _from_ptr(cls, ptr):
+        obj = cls.__new__(cls)
+        obj._c_tensor = ptr
+        return obj
