@@ -116,10 +116,72 @@ tensor* tensor_mem_copy  (const tensor* t, error_t* error){
 }
 
 /* Meta */
-dtype_t tensor_meta_dtype(const tensor* t,error_t*e){ STUB; return 0; }
-size_t tensor_meta_size(const tensor* t,error_t*e){ STUB; return 0; }
-size_t* tensor_meta_shape(const tensor* t,error_t*e){ STUB; return NULL; }
-size_t tensor_meta_rank(const tensor* t,error_t*e){ STUB; return 0; }
+dtype_t tensor_meta_dtype(const tensor* t, error_t* error) {
+    if (error) {
+        error->code = ERR_OK;
+        error->msg  = NULL;
+    }
+    if (!t) {
+        if (error) {
+            error->code = ERR_NULL_PTR;
+            error->msg  = "tensor is NULL";
+        }
+        return (dtype_t)0;
+    }
+    return t->dtype;
+}
+size_t tensor_meta_size(const tensor* t, error_t* error) {
+    if (error) {
+        error->code = ERR_OK;
+        error->msg  = NULL;
+    }
+    if (!t) {
+        if (error) {
+            error->code = ERR_NULL_PTR;
+            error->msg  = "tensor is NULL";
+        }
+        return 0;
+    }
+    return t->size;
+}
+size_t* tensor_meta_shape(const tensor* t, error_t* error) {
+    if (error) {
+        error->code = ERR_OK;
+        error->msg  = NULL;
+    }
+    if (!t) {
+        if (error) {
+            error->code = ERR_NULL_PTR;
+            error->msg  = "tensor is NULL";
+        }
+        return NULL;
+    }
+    return t->shape;
+}
+size_t tensor_meta_rank(const tensor* t, error_t* error) {
+    if (error) {
+        error->code = ERR_OK;
+        error->msg  = NULL;
+    }
+    if (!t) {
+        if (error) {
+            error->code = ERR_NULL_PTR;
+            error->msg  = "tensor is NULL";
+        }
+        return 0;
+    }
+    return t->rank;
+}
+
+
+
+
+
+
+
+
+
+
 
 /* Elementwise */
 tensor* tensor_op_ew_prim(pri_op_t op,const tensor**i,error_t*e) STUB
@@ -137,7 +199,6 @@ tensor* tensor_op_view_expand(tensor*t,size_t a,const size_t*b,error_t*e) STUB
 
 /* Utils */
 void* tensor_util_dptr(const tensor*t,error_t*e){ STUB; return NULL; }
-size_t tensor_util_bsize(const tensor*t,error_t*e){ STUB; return 0; }
 
 size_t tensor__util__dtype_size(dtype_t d){ return 0; }
 bool tensor__util__is_contiguous(const tensor*t,error_t*e){ STUB; return false; }
