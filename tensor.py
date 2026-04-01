@@ -1,44 +1,127 @@
-from liblinf import *
+from hpc_kers.libtensor import lib, TensorPtr, Error, DTypes, PriOp, c_size_t, POINTER
+import ctypes
 
 class Tensor:
-    _DTYPE_MAP = {
-        "fp64": DTypes.FP64,
-        "fp32": DTypes.FP32,
-        "int64": DTypes.INT64,
-        "int32": DTypes.INT32,
-        "int16": DTypes.INT16,
-        "int8": DTypes.INT8,
-        "uint64": DTypes.UINT64,
-        "uint32": DTypes.UINT32,
-        "uint16": DTypes.UINT16,
-        "uint8": DTypes.UINT8,
-    }
-
-    def __init__(self, shape, dtype="fp32"):
-        if not isinstance(shape, (list, tuple)):
-            raise TypeError("shape must be list/tuple")
-        if not all(isinstance(x, int) and x > 0 for x in shape):
-            raise ValueError("invalid shape")
-        if dtype not in self._DTYPE_MAP:
-            raise ValueError("invalid dtype")
-
-        self.rank = len(shape)
+    def __init__(self, shape=None, dtype='REAL64', data=None, _ptr=None):
+        self._err = Error()
+        self._ptr = _ptr
+        if _ptr:
+            return
+        if shape is None:
+            raise ValueError("Shape required for new tensor")
         self.shape = tuple(shape)
-        self.dtype = self._DTYPE_MAP[dtype]
+        self.rank = len(shape)
+        self.dtype = getattr(DTypes,dtype)
+        shape_arr = (c_size_t*self.rank)(*self.shape)
+        if data is None:
+            self._ptr = lib.tensor_mem_alloc(self.rank, shape_arr, self.dtype, ctypes.byref(self._err))
+        else:
+            self._ptr = lib.tensor_from_buffer_copy(data, self.rank, shape_arr, self.dtype, ctypes.byref(self._err))
+        self._check_error()
 
-        c_shape = (c_size_t * self.rank)(*shape)
+    def _check_error(self):
+        if self._err.code != 0:
+            msg = self._err.msg.decode() if self._err.msg else ""
+            raise RuntimeError(f"Tensor Error {self._err.code}: {msg}")
 
-        self._c_tensor = lib.tensor_mem_alloc(
-            c_size_t(self.rank),
-            c_shape,
-            self.dtype
-        )
+    def __del__(self):
+        if self._ptr:
+            lib.tensor_mem_free(self._ptr)
+            self._ptr = None
 
-        if not self._c_tensor:
-            raise RuntimeError("allocation failed")
+    # ---------------- Metadata ----------------
+    @property
+    def dtype_(self):
+        return lib.tensor_meta_dtype(self._ptr, ctypes.byref(self._err))
+    @property
+    def size(self):
+        return lib.tensor_meta_size(self._ptr, ctypes.byref(self._err))
+    @property
+    def rank_(self):
+        return lib.tensor_meta_rank(self._ptr, ctypes.byref(self._err))
+    @property
+    def shape_(self):
+        ptr = lib.tensor_meta_shape(self._ptr, ctypes.byref(self._err))
+        self._check_error()
+        return tuple(ptr[i] for i in range(self.rank_))
+
+    # ---------------- Views ----------------
+    def reshape(self, new_shape):
+        rank = len(new_shape)
+        shape_arr = (c_size_t*rank)(*new_shape)
+        out = lib.tensor_op_view_reshape(self._ptr, rank, shape_arr, ctypes.byref(self._err))
+        self._check_error()
+        return Tensor(_ptr=out)
+    def permute(self, order):
+        order_arr = (c_size_t*len(order))(*order)
+        out = lib.tensor_op_view_permute(self._ptr, order_arr, ctypes.byref(self._err))
+        self._check_error()
+        return Tensor(_ptr=out)
+    def slice(self, start, stop, step):
+        r = len(start)
+        start_arr = (c_size_t*r)(*start)
+        stop_arr = (c_size_t*r)(*stop)
+        step_arr = (c_size_t*r)(*step)
+        out = lib.tensor_op_view_slice(self._ptr, start_arr, stop_arr, step_arr, ctypes.byref(self._err))
+        self._check_error()
+        return Tensor(_ptr=out)
+    def expand(self, new_shape):
+        rank = len(new_shape)
+        shape_arr = (c_size_t*rank)(*new_shape)
+        out = lib.tensor_op_view_expand(self._ptr, rank, shape_arr, ctypes.byref(self._err))
+        self._check_error()
+        return Tensor(_ptr=out)
+
+    # ---------------- Kernels ----------------
+    def ew_kernel(self, kernel_func, *others):
+        inputs = (TensorPtr*(len(others)+1))()
+        inputs[0] = self._ptr
+        for i,t in enumerate(others):
+            inputs[i+1] = t._ptr
+        out = lib.tensor_op_ew_ker(kernel_func, None, inputs, ctypes.byref(self._err))
+        self._check_error()
+        return Tensor(_ptr=out)
+
+    def rdc_kernel(self, kernel_func, axis=0):
+        out = lib.tensor_op_rdc_ker(kernel_func, self._ptr, axis, ctypes.byref(self._err))
+        self._check_error()
+        return Tensor(_ptr=out)
+
+    # ---------------- Data ----------------
+    @classmethod
+    def from_const(cls, val, shape, dtype='REAL64'):
+        rank = len(shape)
+        shape_arr = (c_size_t*rank)(*shape)
+        err = Error()
+        ptr = lib.tensor_from_const(val, rank, shape_arr, getattr(DTypes,dtype), ctypes.byref(err))
+        if err.code != 0: raise RuntimeError(f"Error {err.code}: {err.msg.decode()}")
+        return cls(_ptr=ptr)
 
     @classmethod
-    def _from_ptr(cls, ptr):
-        obj = cls.__new__(cls)
-        obj._c_tensor = ptr
-        return obj
+    def from_buffer(cls, buffer, shape, dtype='REAL64'):
+        rank = len(shape)
+        shape_arr = (c_size_t*rank)(*shape)
+        err = Error()
+        ptr = lib.tensor_from_buffer_copy(buffer, rank, shape_arr, getattr(DTypes,dtype), ctypes.byref(err))
+        if err.code != 0: raise RuntimeError(f"Error {err.code}: {err.msg.decode()}")
+        return cls(_ptr=ptr)
+
+    @classmethod
+    def from_array_1d(cls, data, size, dtype='REAL64'):
+        err = Error()
+        ptr = lib.tensor_from_array_1d(data, size, getattr(DTypes,dtype), ctypes.byref(err))
+        if err.code != 0: raise RuntimeError(f"Error {err.code}: {err.msg.decode()}")
+        return cls(_ptr=ptr)
+
+    def to_buffer(self):
+        buf = lib.tensor_to_buffer_copy(self._ptr, ctypes.byref(self._err))
+        self._check_error()
+        return buf
+
+    # ---------------- Debug ----------------
+    def print(self):
+        lib.tensor_print(self._ptr, ctypes.byref(self._err))
+        self._check_error()
+    def print_structure(self):
+        lib.tensor_print_structure(self._ptr, ctypes.byref(self._err))
+        self._check_error()
