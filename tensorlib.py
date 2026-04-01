@@ -2,26 +2,42 @@ import os
 import ctypes
 from ctypes import c_size_t, c_void_p, POINTER, c_int, c_bool, c_char_p
 
+# -------------------------------
 # Load shared library
+# -------------------------------
 _lib_dir = os.path.dirname(os.path.abspath(__file__))
-lib_path = os.path.join(_lib_dir, "libtensor_c.so")
+lib_path = os.path.join(_lib_dir, "libtensor.so")
 lib = ctypes.CDLL(lib_path)
 
+# -------------------------------
 # Types
+# -------------------------------
 c_size_p = POINTER(c_size_t)
 
-# Enum
 class DTypes(ctypes.c_int):
     REAL64   = 0
     REAL32   = 1
-    INT64  = 2
-    INT32  = 3
-    INT16  = 4
-    INT8   = 5
-    UINT64 = 6
-    UINT32 = 7
-    UINT16 = 8
-    UINT8  = 9
+    INT64    = 2
+    INT32    = 3
+    INT16    = 4
+    INT8     = 5
+    UINT64   = 6
+    UINT32   = 7
+    UINT16   = 8
+    UINT8    = 9
+
+dtype_ctype_map = {
+    DTypes.REAL64: ctypes.c_double,
+    DTypes.REAL32: ctypes.c_float,
+    DTypes.INT64:  ctypes.c_int64,
+    DTypes.INT32:  ctypes.c_int32,
+    DTypes.INT16:  ctypes.c_int16,
+    DTypes.INT8:   ctypes.c_int8,
+    DTypes.UINT64: ctypes.c_uint64,
+    DTypes.UINT32: ctypes.c_uint32,
+    DTypes.UINT16: ctypes.c_uint16,
+    DTypes.UINT8:  ctypes.c_uint8    
+}
 
 class ErrorCode(ctypes.c_int):
     ERR_OK = 0
@@ -46,11 +62,22 @@ class Error(ctypes.Structure):
     ]
 
 class CTensor(ctypes.Structure):
-    pass
+    _fields_ = [
+        ('rank', c_size_t),
+        ('dtype', c_int),
+        ('size', c_size_t),
+        ('dtype_size', c_size_t),
+        ('data', c_void_p),
+        ('shape', POINTER(c_size_t)),
+        ('strides', POINTER(c_size_t)),
+        ('owns_data', c_bool)
+    ]
 
 TensorPtr = POINTER(CTensor)
 
-# 1. Memory Management
+# -------------------------------
+# Memory Management
+# -------------------------------
 lib.tensor_mem_alloc.restype = TensorPtr
 lib.tensor_mem_alloc.argtypes = [c_size_t, c_size_p, c_int, POINTER(Error)]
 
@@ -75,17 +102,38 @@ lib.tensor_mem_to_array.argtypes = [TensorPtr, POINTER(Error)]
 lib.tensor_mem_view_to_array.restype = c_void_p
 lib.tensor_mem_view_to_array.argtypes = [TensorPtr, POINTER(Error)]
 
-# 3. Elementwise
-EWKerFunc = ctypes.CFUNCTYPE(None, ctypes.POINTER(c_void_p), c_void_p, c_size_t)
+# -------------------------------
+# Metadata
+# -------------------------------
+lib.tensor_meta_size.restype = c_size_t
+lib.tensor_meta_size.argtypes = [TensorPtr, POINTER(Error)]
+
+lib.tensor_meta_rank.restype = c_size_t
+lib.tensor_meta_rank.argtypes = [TensorPtr, POINTER(Error)]
+
+lib.tensor_meta_dtype.restype = c_int
+lib.tensor_meta_dtype.argtypes = [TensorPtr, POINTER(Error)]
+
+lib.tensor_meta_shape.restype = POINTER(c_size_t)
+lib.tensor_meta_shape.argtypes = [TensorPtr, POINTER(Error)]
+
+# -------------------------------
+# Elementwise
+# -------------------------------
+EWKerFunc = ctypes.CFUNCTYPE(None, POINTER(c_void_p), c_void_p, c_size_t)
 
 lib.tensor_op_ew_ker.restype = TensorPtr
 lib.tensor_op_ew_ker.argtypes = [EWKerFunc, TensorPtr, POINTER(TensorPtr), POINTER(Error)]
 
-# 3. Reduction
+# -------------------------------
+# Reduction
+# -------------------------------
 lib.tensor_op_rdc_ker.restype = TensorPtr
 lib.tensor_op_rdc_ker.argtypes = [EWKerFunc, TensorPtr, c_size_t, POINTER(Error)]
 
-# 3. Views
+# -------------------------------
+# Views
+# -------------------------------
 lib.tensor_op_view_reshape.restype = TensorPtr
 lib.tensor_op_view_reshape.argtypes = [TensorPtr, c_size_t, POINTER(c_size_t), POINTER(Error)]
 
@@ -98,7 +146,9 @@ lib.tensor_op_view_slice.argtypes = [TensorPtr, POINTER(c_size_t), POINTER(c_siz
 lib.tensor_op_view_expand.restype = TensorPtr
 lib.tensor_op_view_expand.argtypes = [TensorPtr, c_size_t, POINTER(c_size_t), POINTER(Error)]
 
-# 4. Utility Functions
+# -------------------------------
+# Utility Functions
+# -------------------------------
 lib.tensor__util__dptr.restype = c_void_p
 lib.tensor__util__dptr.argtypes = [TensorPtr, POINTER(Error)]
 
