@@ -13,7 +13,7 @@ plan.txt
 *.so
 *.out
 
-test_tensor.c
+tensor_test.c
 
 Makefile
 
