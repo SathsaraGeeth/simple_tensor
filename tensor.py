@@ -8,11 +8,7 @@ class Tensor:
         self._err = Error()
         self.shape = tuple(shape)
         self.rank = len(shape)
-        if isinstance(dtype, int):
-            self.dtype = dtype
-        else:
-            self.dtype = getattr(DTypes, dtype)
-
+        self.dtype = dtype if isinstance(dtype, int) else getattr(DTypes, dtype)
         shape_arr = (c_size_t * self.rank)(*self.shape)
 
         if copconst is not None:
@@ -43,7 +39,6 @@ class Tensor:
             lib.tensor_mem_free(self._ptr)
             self._ptr = None
 
-    # ---------------- Array conversion ----------------
     def to_array(self):
         data_ptr = lib.tensor_mem_to_array(self._ptr, ctypes.byref(self._err))
         self._check_error()
@@ -62,7 +57,6 @@ class Tensor:
         array_ptr = ctypes.cast(data_ptr, ctypes.POINTER(array_type))
         return list(array_ptr.contents)
 
-    # ---------------- Metadata ----------------
     @property
     def get_dtype(self):
         return lib.tensor_meta_dtype(self._ptr, ctypes.byref(self._err))
@@ -81,7 +75,6 @@ class Tensor:
         self._check_error()
         return tuple(ptr[i] for i in range(self.get_rank))
 
-    # ---------------- Views ----------------
     def reshape(self, new_shape):
         rank = len(new_shape)
         shape_arr = (c_size_t * rank)(*new_shape)
@@ -111,7 +104,6 @@ class Tensor:
         self._check_error()
         return Tensor._from_ptr(out)
 
-    # ---------------- Kernels ----------------
     def ew_kernel(self, kernel_func, *others, out=None):
         inputs = (TensorPtr * (len(others) + 1))()
         inputs[0] = self._ptr
@@ -119,60 +111,56 @@ class Tensor:
             inputs[i + 1] = t._ptr
         if out is None:
             out = Tensor(self.get_shape, dtype=self.dtype)
-        lib.tensor_op_ew_ker(EWKerFunc(kernel_func), out._ptr, inputs, ctypes.byref(self._err))
+
+        cfunc = EWKerFunc(kernel_func)
+        lib.tensor_op_ew_ker(cfunc, out._ptr, inputs, len(others) + 1, ctypes.byref(self._err))
         self._check_error()
         return out
 
-    def rdc_kernel(self, kernel_func, axis=0, out=None):
+    def rdc_kernel(self, kernel_func, axis=0):
         ret_ptr = lib.tensor_op_rdc_ker(EWKerFunc(kernel_func), self._ptr, axis, ctypes.byref(self._err))
         self._check_error()
         return Tensor._from_ptr(ret_ptr)
 
-    # ---------------- Derived elementwise ops ----------------
-    def _ctype_from_dtype(self):
-        mapping = {
-            DTypes.REAL32: ctypes.c_float,
-            DTypes.REAL64: ctypes.c_double,
-            DTypes.INT8:   ctypes.c_int8,
-            DTypes.INT16:  ctypes.c_int16,
-            DTypes.INT32:  ctypes.c_int32,
-            DTypes.INT64:  ctypes.c_int64,
-            DTypes.UINT8:  ctypes.c_uint8,
-            DTypes.UINT16: ctypes.c_uint16,
-            DTypes.UINT32: ctypes.c_uint32,
-            DTypes.UINT64: ctypes.c_uint64,
-        }
-        return mapping[self.dtype]
-
-    def _binary_op(self, other, py_func, out=None):
+    def _binary_op(self, other, kernel_func, out=None):
         if not isinstance(other, Tensor):
             raise TypeError("Operand must be a Tensor")
-        ctype = self._ctype_from_dtype()
-        class CTensor(ctypes.Structure):
-            _fields_ = [("data", ctypes.c_void_p)]
-        def kernel(inputs, output_ptr, n):
-            t1 = ctypes.cast(inputs[0], ctypes.POINTER(CTensor)).contents
-            t2 = ctypes.cast(inputs[1], ctypes.POINTER(CTensor)).contents
-            a_ptr = ctypes.cast(t1.data, ctypes.POINTER(ctype))
-            b_ptr = ctypes.cast(t2.data, ctypes.POINTER(ctype))
-            out_ptr = ctypes.cast(output_ptr, ctypes.POINTER(ctype))
-            for i in range(n):
-                out_ptr[i] = py_func(a_ptr[i], b_ptr[i])
-        return self.ew_kernel(kernel, other, out=out)
+        if out is None:
+            out = Tensor(self.get_shape, dtype=self.dtype)
 
-    def _unary_op(self, py_func, out=None):
         ctype = self._ctype_from_dtype()
-        class CTensor(ctypes.Structure):
-            _fields_ = [("data", ctypes.c_void_p)]  # minimal needed
-        def kernel(inputs, output_ptr, n):
-            t = ctypes.cast(inputs[0], ctypes.POINTER(CTensor)).contents
-            a_ptr = ctypes.cast(t.data, ctypes.POINTER(ctype))
-            out_ptr = ctypes.cast(output_ptr, ctypes.POINTER(ctype))
-            for i in range(n):
-                out_ptr[i] = py_func(a_ptr[i])
-        return self.ew_kernel(kernel, out=out)
 
-    # ---------------- Operators ----------------
+        def c_kernel(inputs_ptr, output_ptr):
+            inp_array = ctypes.cast(inputs_ptr, ctypes.POINTER(ctypes.c_void_p * 2)).contents
+            a_ptr = ctypes.cast(inp_array[0], ctypes.POINTER(ctype))
+            b_ptr = ctypes.cast(inp_array[1], ctypes.POINTER(ctype))
+            out_ptr = ctypes.cast(output_ptr, ctypes.POINTER(ctype))
+            out_ptr[0] = kernel_func(a_ptr[0], b_ptr[0])
+
+        cfunc = EWKerFunc(c_kernel)
+        inputs = (TensorPtr * 2)(self._ptr, other._ptr)
+        lib.tensor_op_ew_ker(cfunc, out._ptr, inputs, 2, ctypes.byref(self._err))
+        self._check_error()
+        return out
+
+    def _unary_op(self, kernel_func, out=None):
+        if out is None:
+            out = Tensor(self.get_shape, dtype=self.dtype)
+
+        ctype = self._ctype_from_dtype()
+
+        def c_kernel(inputs_ptr, output_ptr):
+            inp_array = ctypes.cast(inputs_ptr, ctypes.POINTER(ctypes.c_void_p * 1)).contents
+            a_ptr = ctypes.cast(inp_array[0], ctypes.POINTER(ctype))
+            out_ptr = ctypes.cast(output_ptr, ctypes.POINTER(ctype))
+            out_ptr[0] = kernel_func(a_ptr[0])
+
+        cfunc = EWKerFunc(c_kernel)
+        inputs = (TensorPtr * 1)(self._ptr)
+        lib.tensor_op_ew_ker(cfunc, out._ptr, inputs, 1, ctypes.byref(self._err))
+        self._check_error()
+        return out
+
     __add__ = lambda self, other: self._binary_op(other, lambda a, b: a + b)
     __sub__ = lambda self, other: self._binary_op(other, lambda a, b: a - b)
     __neg__ = lambda self: self._unary_op(lambda a: -a)
@@ -194,7 +182,6 @@ class Tensor:
     __gt__ = lambda self, other: self._binary_op(other, lambda a, b: a > b)
     __ge__ = lambda self, other: self._binary_op(other, lambda a, b: a >= b)
 
-    # ---------------- Representation ----------------
     def __repr__(self):
         return f"Tensor(shape={self.get_shape}, dtype={self.dtype}, rank={self.rank})"
 
@@ -211,16 +198,30 @@ class Tensor:
             return str(build_nested(arr, self.get_shape))
         except Exception as e:
             return f"<Tensor Error: {e}>"
-        
+
     @classmethod
     def _from_ptr(cls, ptr):
         t = object.__new__(cls)
         t._err = Error()
         t._ptr = ptr
-        t.shape = tuple(
-            lib.tensor_meta_shape(ptr, ctypes.byref(t._err))[i]
-            for i in range(lib.tensor_meta_rank(ptr, ctypes.byref(t._err))
-        ))
-        t.rank = len(t.shape)
+        rank = lib.tensor_meta_rank(ptr, ctypes.byref(t._err))
+        shape_ptr = lib.tensor_meta_shape(ptr, ctypes.byref(t._err))
+        t.shape = tuple(shape_ptr[i] for i in range(rank))
+        t.rank = rank
         t.dtype = lib.tensor_meta_dtype(ptr, ctypes.byref(t._err))
         return t
+
+    def _ctype_from_dtype(self):
+        mapping = {
+            DTypes.REAL32: ctypes.c_float,
+            DTypes.REAL64: ctypes.c_double,
+            DTypes.INT8:   ctypes.c_int8,
+            DTypes.INT16:  ctypes.c_int16,
+            DTypes.INT32:  ctypes.c_int32,
+            DTypes.INT64:  ctypes.c_int64,
+            DTypes.UINT8:  ctypes.c_uint8,
+            DTypes.UINT16: ctypes.c_uint16,
+            DTypes.UINT32: ctypes.c_uint32,
+            DTypes.UINT64: ctypes.c_uint64,
+        }
+        return mapping[self.dtype]

@@ -120,10 +120,10 @@ lib.tensor_meta_shape.argtypes = [TensorPtr, POINTER(Error)]
 # -------------------------------
 # Elementwise
 # -------------------------------
-EWKerFunc = ctypes.CFUNCTYPE(None, POINTER(c_void_p), c_void_p, c_size_t)
+EWKerFunc = ctypes.CFUNCTYPE(None, POINTER(c_void_p), c_void_p)
 
 lib.tensor_op_ew_ker.restype = TensorPtr
-lib.tensor_op_ew_ker.argtypes = [EWKerFunc, TensorPtr, POINTER(TensorPtr), POINTER(Error)]
+lib.tensor_op_ew_ker.argtypes = [EWKerFunc, TensorPtr, POINTER(TensorPtr), c_size_t, POINTER(Error)]
 
 # -------------------------------
 # Reduction
