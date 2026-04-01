@@ -1,6 +1,6 @@
 #include "../include/tensor.h"
 
-#define STUB {if(e){e->code = ERR_NOT_IMPLEMENTED; e->msg = "not implemented";}}
+#define STUB {if(e){e->code = ERR_NOT_IMPLEMENTED; e->msg = "not implemented";} return NULL;}
 
 /* Memory */
 tensor* tensor_mem_alloc (size_t rank, const size_t* shape, dtype_t dtype, error_t* error) {
@@ -24,11 +24,12 @@ tensor* tensor_mem_alloc (size_t rank, const size_t* shape, dtype_t dtype, error
         return NULL;
     }
     // struct assignment
-    t->rank    = rank;
-    t->dtype   = dtype;
-    t->data    = NULL;
-    t->shape   = NULL;
-    t->strides = NULL;
+    t->rank      = rank;
+    t->dtype     = dtype;
+    t->data      = NULL;
+    t->shape     = NULL;
+    t->strides   = NULL;
+    t->owns_data = true;
 
     if (rank == 0) {            // scalar
         t->size    = 1;
@@ -43,7 +44,7 @@ tensor* tensor_mem_alloc (size_t rank, const size_t* shape, dtype_t dtype, error
         }
 
         memcpy(t->shape, shape, rank * sizeof(size_t));
-        tensor__util__compute_strides(rank, t->shape, t->strides);
+        tensor__util__compute_strides(rank, t->shape, t->strides, error);
         if (error->code != ERR_OK) goto fail;
 
         t->size = 1;
@@ -102,7 +103,8 @@ void    tensor_mem_free  (tensor* t) {
 
     free(t->shape);
     free(t->strides);
-    free(t->data);
+    if (t->owns_data)
+        free(t->data);
     free(t);
 }
 
@@ -121,6 +123,176 @@ tensor* tensor_mem_copy  (const tensor* t, error_t* error){
     tensor* copy = tensor_mem_init(t->rank, t->shape, t->dtype, t->data, error);
     return copy;
 }
+
+tensor* tensor_mem_view_init  (size_t rank, const size_t* shape, dtype_t dtype, const void* data, error_t* error){
+    if (!error) return NULL;
+
+    error->code = ERR_OK;
+    error->msg  = NULL;
+
+    // validata inputs
+    if (rank > 0 && !shape) {
+        error->code = ERR_NULL_PTR;
+        error->msg  = "shape is NULL";
+        return NULL;
+    }
+
+    // memory allocation
+    tensor* t = (tensor*)malloc(sizeof(tensor)); 
+    if (!t) {
+        error->code = ERR_MALLOC_FAIL;
+        error->msg  = "tensor allocation failed";
+        return NULL;
+    }
+    // struct assignment
+    t->rank      = rank;
+    t->dtype     = dtype;
+    t->data      = NULL;
+    t->shape     = NULL;
+    t->strides   = NULL;
+    t->owns_data = false;
+
+    if (rank == 0) {            // scalar
+        t->size    = 1;
+    } else {                    // non-scalar
+        t->shape   = (size_t*) malloc(rank * sizeof(size_t));
+        t->strides = (size_t*) malloc(rank * sizeof(size_t));
+
+        if (!t->shape || !t->strides) {
+            error->code = ERR_MALLOC_FAIL;
+            error->msg  = "shape/strides allocation failed";
+            goto fail;
+        }
+
+        memcpy(t->shape, shape, rank * sizeof(size_t));
+        tensor__util__compute_strides(rank, t->shape, t->strides, error);
+        if (error->code != ERR_OK) goto fail;
+
+        t->size = 1;
+        for (size_t i = 0; i < rank; ++i) {
+            if (shape[i] == 0 || t->size > SIZE_MAX / shape[i]) {
+                error->code = ERR_INVALID_SHAPE;
+                error->msg  = "tensor size overflow or zero dimension";
+                goto fail;
+            }
+            t->size *= shape[i];
+        }
+    }
+
+    size_t dtype_size = tensor__util__dtype_size(dtype, error);
+    if (error->code != ERR_OK) goto fail;
+    t->dtype_size = dtype_size;
+
+    if (t->size > SIZE_MAX / dtype_size) {
+        error->code = ERR_MALLOC_FAIL;
+        error->msg  = "tensor size overflow";
+        goto fail;
+    }
+    t->data =  (void*)data;
+
+    return t;
+
+// fail cleanup
+fail:
+    if (t) tensor_mem_free(t);
+    return NULL;
+}
+
+tensor* tensor_mem_init_const(size_t rank, const size_t* shape, dtype_t dtype, const size_t const_data, error_t* error) {
+    if (!error) return NULL;
+
+    error->code = ERR_OK;
+    error->msg  = NULL;
+
+    size_t size = 1;
+    for (size_t i = 0; i < rank; ++i) {
+        if (shape[i] == 0 || size > SIZE_MAX / shape[i]) {
+            error->code = ERR_INVALID_SHAPE;
+            error->msg  = "invalid shape";
+            return NULL;
+        }
+        size *= shape[i];
+    }
+
+    size_t dtype_size = tensor__util__dtype_size(dtype, error);
+    if (error->code != ERR_OK) return NULL;
+
+    void* buffer = malloc(size * dtype_size);
+    if (!buffer) {
+        error->code = ERR_MALLOC_FAIL;
+        error->msg  = "buffer allocation failed";
+        return NULL;
+    }
+
+    for (size_t i = 0; i < size; ++i) {
+        switch (dtype) {
+            case REAL64: ((double*)buffer)[i] = (double)const_data; break;
+            case REAL32: ((float*)buffer)[i]  = (float)const_data;  break;
+            case INT64:  ((int64_t*)buffer)[i] = (int64_t)const_data; break;
+            case INT32:  ((int32_t*)buffer)[i] = (int32_t)const_data; break;
+            case INT16:  ((int16_t*)buffer)[i] = (int16_t)const_data; break;
+            case INT8:   ((int8_t*)buffer)[i]  = (int8_t)const_data;  break;
+            case UINT64: ((uint64_t*)buffer)[i] = (uint64_t)const_data; break;
+            case UINT32: ((uint32_t*)buffer)[i] = (uint32_t)const_data; break;
+            case UINT16: ((uint16_t*)buffer)[i] = (uint16_t)const_data; break;
+            case UINT8:  ((uint8_t*)buffer)[i]  = (uint8_t)const_data;  break;
+            default:
+                error->code = ERR_INVALID_DTYPE;
+                error->msg  = "unsupported dtype";
+                free(buffer);
+                return NULL;
+        }
+    }
+
+    tensor* t = tensor_mem_view_init(rank, shape, dtype, buffer, error);
+    if (!t) {
+        free(buffer);
+        return NULL;
+    }
+    t->owns_data = true;
+
+    return t;
+}
+
+void* tensor_mem_to_array(const tensor* t, error_t* error) {
+    if (!error) return NULL;
+
+    error->code = ERR_OK;
+    error->msg  = NULL;
+
+    if (!t || !t->data) {
+        error->code = ERR_NULL_PTR;
+        error->msg  = "tensor or data is NULL";
+        return NULL;
+    }
+
+    size_t total_bytes = t->size * t->dtype_size;
+    void* out_array = malloc(total_bytes);
+    if (!out_array) {
+        error->code = ERR_MALLOC_FAIL;
+        error->msg  = "allocation failed";
+        return NULL;
+    }
+
+    memcpy(out_array, t->data, total_bytes);
+    return out_array;
+}
+
+void* tensor_mem_view_to_array(const tensor* t, error_t* error) {
+    if (!error) return NULL;
+
+    error->code = ERR_OK;
+    error->msg  = NULL;
+
+    if (!t || !t->data) {
+        error->code = ERR_NULL_PTR;
+        error->msg  = "tensor or data is NULL";
+        return NULL;
+    }
+
+    return t->data;
+}
+
 
 /* Meta */
 dtype_t tensor_meta_dtype(const tensor* t, error_t* error) {
@@ -247,7 +419,7 @@ bool   tensor__util__is_contiguous    (const tensor* t, error_t* error){
     size_t expected_stride = t->dtype_size;
     if (error->code != ERR_OK) return false;
 
-    for (size_t i = t->rank - 1; i >= 0; --i) {
+    for (size_t i = t->rank; i-- > 0; ) {
         if (t->strides[i] != expected_stride) {
             return false;
         }
@@ -404,9 +576,6 @@ if (error) {
 
 
 /* Elementwise */
-tensor* tensor_op_ew_prim(pri_op_t op, tensor* output, const tensor** inputs, error_t* e) STUB
-
-
 tensor* tensor_op_ew_ker(ew_ker_t kernel, tensor* output, const tensor** inputs, error_t* error){
     if (!error) return NULL;
 
@@ -437,7 +606,6 @@ tensor* tensor_op_ew_ker(ew_ker_t kernel, tensor* output, const tensor** inputs,
 }
 
 /* Reduction */
-tensor* tensor_op_rdc_prim(pri_op_t op,const tensor*t,size_t axis,error_t*e) STUB
 tensor* tensor_op_rdc_ker(ew_ker_t k,const tensor*t,size_t axis,error_t*e) STUB
 
 /* Views */
@@ -445,19 +613,3 @@ tensor* tensor_op_view_reshape(tensor*t,size_t a,const size_t*b,error_t*e) STUB
 tensor* tensor_op_view_permute(tensor*t,const size_t*o,error_t*e) STUB
 tensor* tensor_op_view_slice(tensor*t,const size_t*a,const size_t*b,const size_t*c,error_t*e) STUB
 tensor* tensor_op_view_expand(tensor*t,size_t a,const size_t*b,error_t*e) STUB
-
-
-
-/* Data */
-tensor* tensor_from_buffer(void*d,size_t r,const size_t*s,dtype_t dt,error_t*e) STUB
-tensor* tensor_from_buffer_copy(const void*d,size_t r,const size_t*s,dtype_t dt,error_t*e) STUB
-tensor* tensor_from_array_1d(const void*d,size_t s,dtype_t dt,error_t*e) STUB
-tensor* tensor_from_nested(const void*d,size_t r,const size_t*s,dtype_t dt,error_t*e) STUB
-void* tensor_to_buffer(const tensor*t,error_t*e){ STUB; return NULL; }
-void* tensor_to_buffer_copy(const tensor*t,error_t*e){ STUB; return NULL; }
-void* tensor_to_array_1d(const tensor*t,error_t*e){ STUB; return NULL; }
-void* tensor_to_nested(const tensor*t,error_t*e){ STUB; return NULL; }
-
-/* Debug */
-void tensor_print(const tensor*t,error_t*e) STUB
-void tensor_print_structure(const tensor*t,error_t*e) STUB
