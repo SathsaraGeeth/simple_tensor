@@ -1,6 +1,8 @@
 #ifndef TENSOR_H
 #define TENSOR_H
 
+#pragma once
+
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -10,6 +12,22 @@
 
 ///////////////////// Data Structures /////////////////////
 # define MAX_SIZE SIZE_MAX
+
+#define REAL64_T double
+#define REAL32_T float
+#define INT64_T  int64_t
+#define INT32_T  int32_t
+#define INT16_T  int16_t
+#define INT8_T   int8_t
+#define UINT64_T uint64_t
+#define UINT32_T uint32_t
+#define UINT16_T uint16_t
+#define UINT8_T  uint8_t
+
+#define GET_CTYPE(dtype) _Generic((dtype), \
+    dtype_t: float /* fallback */ \
+)
+
 
 typedef enum {
     REAL64,
@@ -27,7 +45,7 @@ typedef enum {
 
 typedef struct {
     void*       data;
-    size_t      size;
+    size_t      size;       // numel
     dtype_t     dtype;
     size_t      dtype_size;
     size_t*     shape;
@@ -112,7 +130,7 @@ typedef enum {
     POPCNT
 } pri_op_t;
 
-tensor* tensor_op_ew_prim(pri_op_t op, const tensor** inputs, error_t* error);
+tensor* tensor_op_ew_prim(pri_op_t op, tensor* output, const tensor** inputs, error_t* error);
 
 // 3.1.2. Kernels <ker>
 typedef void (*ew_ker_t)(
@@ -120,7 +138,7 @@ typedef void (*ew_ker_t)(
     void*  output,
     size_t n
 );
-tensor* tensor_op_ew_ker(ew_ker_t kernel, const tensor** inputs, error_t* error);
+tensor* tensor_op_ew_ker(ew_ker_t kernel, tensor* output, const tensor** inputs, error_t* error);
 
 // 3.2. Reduction <rdc>
 // 3.2.1. Primitives <prim>
@@ -144,31 +162,11 @@ bool   tensor__util__is_contiguous    (const tensor* t, error_t* error);
 size_t tensor__util__offset_from_index(const tensor* t, const size_t* indices, error_t* error);
 bool   tensor__util__shape_equal      (const tensor* a, const tensor* b, error_t* error);
 bool   tensor__util__is_broadcastable (const tensor* a, const tensor* b, error_t* error);
-void   tensor__util__compute_strides  (size_t rank, const size_t* shape, size_t* strides);
-
-// 4.2. Sheduling/Performance Utilities <__util__>
-
+void   tensor__util__compute_strides  (size_t rank, const size_t* shape, size_t* strides, error_t* error);
 
 
 // 5. Higher Level Operations
-// 5.1. Linear Algebra <linalg>
-tensor* tensor_linalg_matmul      (const tensor* a, const tensor* b, error_t* error);
-tensor* tensor_linalg_dot         (const tensor* a, const tensor* b, error_t* error);
-tensor* tensor_linalg_mmac        (const tensor* a, const tensor* b, const tensor* c, double alpha, double beta, error_t* error);
-tensor* tensor_linalg_transpose   (const tensor* t, const size_t* perm, error_t* error);
-tensor* tensor_linalg_trace       (const tensor* t, error_t* error);
-tensor* tensor_linalg_diag        (const tensor* t, error_t* error);
-tensor* tensor_linalg_eye         (size_t n, dtype_t dtype, error_t* error);
-tensor* tensor_linalg_norm        (const tensor* t, int ord, error_t* error);
-tensor* tensor_linalg_solve_linear(const tensor* a, const tensor* b, error_t* error);
-tensor* tensor_linalg_inverse     (const tensor* t, error_t* error);
-tensor* tensor_linalg_cholesky    (const tensor* t, error_t* error);
-tensor* tensor_linalg_qr          (const tensor* t, tensor** q, tensor** r, error_t* error);
-tensor* tensor_linalg_lu          (const tensor* t, tensor** p, tensor** l, tensor** u, error_t* error);
-tensor* tensor_linalg_eig         (const tensor* t, tensor** eigenvectors, error_t* error);
-tensor* tensor_linalg_svd         (const tensor* t, tensor** u, tensor** s, tensor** vt, error_t* error);
-
-// 5.2. Data Manipulation <data>
+// 5.1. Data Manipulation <data>
 tensor* tensor_from_const         (const size_t data, size_t rank, const size_t* shape, dtype_t dtype, error_t* error);
 tensor* tensor_from_buffer        (void* data, size_t rank, const size_t* shape, dtype_t dtype, error_t* error);
 tensor* tensor_from_buffer_copy   (const void* data, size_t rank, const size_t* shape, dtype_t dtype, error_t* error);
@@ -179,7 +177,7 @@ void*   tensor_to_buffer_copy     (const tensor* t, error_t* error);
 void*   tensor_to_array_1d        (const tensor* t, error_t* error);
 void*   tensor_to_nested          (const tensor* t, error_t* error);
 
-// 5.3. Debugging/Visualization <debug>
+// 5.2. Debugging/Visualization <debug>
 void    tensor_print              (const tensor* t, error_t* error);
 void    tensor_print_structure    (const tensor* t, error_t* error);
 

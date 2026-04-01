@@ -46,8 +46,15 @@ tensor* tensor_mem_alloc (size_t rank, const size_t* shape, dtype_t dtype, error
         tensor__util__compute_strides(rank, t->shape, t->strides);
         if (error->code != ERR_OK) goto fail;
 
-        t->size = tensor__util__numel(t, error);
-        if (error->code != ERR_OK) goto fail;
+        t->size = 1;
+        for (size_t i = 0; i < rank; ++i) {
+            if (shape[i] == 0 || t->size > SIZE_MAX / shape[i]) {
+                error->code = ERR_INVALID_SHAPE;
+                error->msg  = "tensor size overflow or zero dimension";
+                goto fail;
+            }
+            t->size *= shape[i];
+        }
     }
 
     size_t dtype_size = tensor__util__dtype_size(dtype, error);
@@ -396,18 +403,38 @@ if (error) {
 }
 
 
-
-
-
-
-
-
-
-
-
 /* Elementwise */
-tensor* tensor_op_ew_prim(pri_op_t op,const tensor**i,error_t*e) STUB
-tensor* tensor_op_ew_ker(ew_ker_t k,const tensor**i,error_t*e) STUB
+tensor* tensor_op_ew_prim(pri_op_t op, tensor* output, const tensor** inputs, error_t* e) STUB
+
+
+tensor* tensor_op_ew_ker(ew_ker_t kernel, tensor* output, const tensor** inputs, error_t* error){
+    if (!error) return NULL;
+
+    error->code = ERR_OK;
+    error->msg  = NULL;
+
+    // kernel validation
+    if (!kernel) {
+        error->code = ERR_NULL_PTR;
+        error->msg  = "kernel is NULL";
+        return NULL;
+    }
+    // inputs ptr validation
+    if (!inputs) {
+        error->code = ERR_NULL_PTR;
+        error->msg  = "inputs is NULL";
+        return NULL;
+    }
+    // output validation
+    if (!output) {
+        error->code = ERR_NULL_PTR;
+        error->msg  = "output is NULL";
+        return NULL;
+    }
+    
+    kernel((void**)inputs, output->data, output->size);
+    return output;
+}
 
 /* Reduction */
 tensor* tensor_op_rdc_prim(pri_op_t op,const tensor*t,size_t axis,error_t*e) STUB
@@ -420,23 +447,6 @@ tensor* tensor_op_view_slice(tensor*t,const size_t*a,const size_t*b,const size_t
 tensor* tensor_op_view_expand(tensor*t,size_t a,const size_t*b,error_t*e) STUB
 
 
-
-/* Linalg */
-tensor* tensor_linalg_matmul(const tensor*a,const tensor*b,error_t*e) STUB
-tensor* tensor_linalg_dot(const tensor*a,const tensor*b,error_t*e) STUB
-tensor* tensor_linalg_mmac(const tensor*a,const tensor*b,const tensor*c,double x,double y,error_t*e) STUB
-tensor* tensor_linalg_transpose(const tensor*t,const size_t*p,error_t*e) STUB
-tensor* tensor_linalg_trace(const tensor*t,error_t*e) STUB
-tensor* tensor_linalg_diag(const tensor*t,error_t*e) STUB
-tensor* tensor_linalg_eye(size_t n,dtype_t d,error_t*e) STUB
-tensor* tensor_linalg_norm(const tensor*t,int ord,error_t*e) STUB
-tensor* tensor_linalg_solve_linear(const tensor*a,const tensor*b,error_t*e) STUB
-tensor* tensor_linalg_inverse(const tensor*t,error_t*e) STUB
-tensor* tensor_linalg_cholesky(const tensor*t,error_t*e) STUB
-tensor* tensor_linalg_qr(const tensor*t,tensor**q,tensor**r,error_t*e) STUB
-tensor* tensor_linalg_lu(const tensor*t,tensor**p,tensor**l,tensor**u,error_t*e) STUB
-tensor* tensor_linalg_eig(const tensor*t,tensor**v,error_t*e) STUB
-tensor* tensor_linalg_svd(const tensor*t,tensor**u,tensor**s,tensor**vt,error_t*e) STUB
 
 /* Data */
 tensor* tensor_from_buffer(void*d,size_t r,const size_t*s,dtype_t dt,error_t*e) STUB
