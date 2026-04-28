@@ -23,7 +23,13 @@ else
 endif
 
 
+# LIB_SRCS = ../src/tensor.c \
+#            $(IMPL_MEM) \
+#            $(IMPL_KER)
+
 LIB_SRCS = ../src/tensor.c \
+           ../src/graph/graph.c \
+           ../src/dev/graph_tracer.c \
            $(IMPL_MEM) \
            $(IMPL_KER)
 
@@ -32,7 +38,7 @@ LIB_SRCS = ../src/tensor.c \
 #            ../src/dev/graph_tracer.c \
 #            ../src/kers/common/constraints.c \
 #            $(IMPL_MEM) \
-#            $(IMPL_KER)
+#            $(IMPL_KER)         
 
 LIB_OBJS = $(LIB_SRCS:.c=.o)
 
