@@ -1,6 +1,7 @@
 # Private
 src/graph/
 include/graph.h
+**/dev/
 **/cuda/
 **/x86_omp/
 src/kers/common/constraints.c
