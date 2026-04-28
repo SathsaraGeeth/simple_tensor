@@ -14,14 +14,18 @@ typedef enum {
 } mem_algn_t;
 
 typedef struct {
-    dptr*       ptr;
+    dptr* ptr;
     extent      size;
     mem_loc_t   loc;
     mem_algn_t  alignment;
+    boolean     is_owner;
 } mem_block;
 
+
 extern mem_block* mem_alloc(extent size, mem_loc_t loc);
-extern int8       mem_free(mem_block* block);                                        // free the mem_block
-extern int8       mem_copy(mem_block* dst, const mem_block* src, extent size);       // copy the dst -> src
+extern boolean    mem_free(mem_block* block); 
+extern boolean    mem_copy(mem_block* dst, const mem_block* src, extent size);
+extern boolean    mem_view(mem_block* dst, const dptr* data, mem_loc_t loc);
+extern boolean    mem_view_copy(mem_block* dst, const dptr* data, mem_loc_t loc);
 
 #endif /* MEMORY_H */

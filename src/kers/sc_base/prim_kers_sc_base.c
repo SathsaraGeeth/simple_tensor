@@ -116,7 +116,7 @@ ker_t reduce_any_ker = reduce_any_impl;
 **/
 static tensor* fill_const_impl(tensor* output, const tensor** inputs, const extent num_in, const void* params, const extent num_param) {
     (void)inputs; (void)num_in;
-    if (!tensor_valid(output) || !output->is_owned || !params) return &ERROR_TENSOR;
+    if (!tensor_valid(output) || !output->data->is_owner || !params) return &ERROR_TENSOR;
     extent elem_size = dtype_size(output->dtype);
     if (num_param != elem_size) return &ERROR_TENSOR;
     uint8* dst = (uint8*)output->data->ptr;

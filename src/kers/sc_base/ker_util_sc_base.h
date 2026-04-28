@@ -84,7 +84,7 @@ static inline boolean any_type(dtype_t type)  { (void)type; return true; }
 static tensor* name##_impl(tensor* output, const tensor** inputs, const extent num_in, const void* params, const extent num_param) { \
     (void)params; (void)num_param; \
     if (num_in != 1 || !tensor_valid(inputs[0]) || !inputs[0]->is_contiguous) return &ERROR_TENSOR; \
-    if (!tensor_valid(output) || !output->is_owned || !output->is_contiguous) return &ERROR_TENSOR; \
+    if (!tensor_valid(output) || !output->data->is_owner || !output->is_contiguous) return &ERROR_TENSOR; \
     if (inputs[0]->dtype != output->dtype || !type_check(output->dtype)) return &ERROR_TENSOR; \
     if (!tensors_shape_match(inputs[0], output)) return &ERROR_TENSOR; \
     extent _n = output->size; \
@@ -97,7 +97,7 @@ ker_t name##_ker = name##_impl;
 static tensor* name##_impl(tensor* output, const tensor** inputs, const extent num_in, const void* params, const extent num_param) { \
     (void)params; (void)num_param; \
     if (num_in != 2 || !tensor_valid(inputs[0]) || !inputs[0]->is_contiguous || !tensor_valid(inputs[1]) || !inputs[1]->is_contiguous) return &ERROR_TENSOR; \
-    if (!tensor_valid(output) || !output->is_owned || !output->is_contiguous) return &ERROR_TENSOR; \
+    if (!tensor_valid(output) || !output->data->is_owner || !output->is_contiguous) return &ERROR_TENSOR; \
     if (inputs[0]->dtype != inputs[1]->dtype || inputs[0]->dtype != output->dtype || !type_check(output->dtype)) return &ERROR_TENSOR; \
     if (!tensors_shape_match(inputs[0], inputs[1]) || !tensors_shape_match(inputs[0], output)) return &ERROR_TENSOR; \
     extent _n = output->size; \
@@ -112,7 +112,7 @@ static tensor* name##_impl(tensor* output, const tensor** inputs, const extent n
     (void)params; (void)num_param; \
     if (num_in != 3 || !real_only(output->dtype)) return &ERROR_TENSOR; \
     if (!tensor_valid(inputs[0]) || !inputs[0]->is_contiguous || !tensor_valid(inputs[1]) || !inputs[1]->is_contiguous || !tensor_valid(inputs[2]) || !inputs[2]->is_contiguous) return &ERROR_TENSOR; \
-    if (!tensor_valid(output) || !output->is_owned || !output->is_contiguous) return &ERROR_TENSOR; \
+    if (!tensor_valid(output) || !output->data->is_owner || !output->is_contiguous) return &ERROR_TENSOR; \
     if (inputs[0]->dtype != output->dtype || inputs[1]->dtype != output->dtype || inputs[2]->dtype != output->dtype) return &ERROR_TENSOR; \
     if (!tensors_shape_match(inputs[0], output) || !tensors_shape_match(inputs[1], output) || !tensors_shape_match(inputs[2], output)) return &ERROR_TENSOR; \
     extent _n = output->size; \
@@ -129,7 +129,7 @@ ker_t name##_ker = name##_impl;
 static tensor* name##_impl(tensor* output, const tensor** inputs, const extent num_in, const void* params, const extent num_param) { \
     (void)params; (void)num_param; \
     if (num_in != 2 || !tensor_valid(inputs[0]) || !inputs[0]->is_contiguous || !tensor_valid(inputs[1]) || !inputs[1]->is_contiguous) return &ERROR_TENSOR; \
-    if (!tensor_valid(output) || !output->is_owned || !output->is_contiguous || output->dtype != UINT8) return &ERROR_TENSOR; \
+    if (!tensor_valid(output) || !output->data->is_owner || !output->is_contiguous || output->dtype != UINT8) return &ERROR_TENSOR; \
     if (inputs[0]->dtype != inputs[1]->dtype) return &ERROR_TENSOR; \
     if (!tensors_shape_match(inputs[0], inputs[1]) || !tensors_shape_match(inputs[0], output)) return &ERROR_TENSOR; \
     extent _n = output->size; uint8* _o = (uint8*)output->data->ptr; \
@@ -154,7 +154,7 @@ static tensor* name##_impl(tensor* output, const tensor** inputs, const extent n
     if (!tensor_valid(inputs[0]) || inputs[0]->dtype != UINT8 || !inputs[0]->is_contiguous) return &ERROR_TENSOR; \
     if (!tensor_valid(inputs[1]) || !inputs[1]->is_contiguous) return &ERROR_TENSOR; \
     if (!tensor_valid(inputs[2]) || !inputs[2]->is_contiguous) return &ERROR_TENSOR; \
-    if (!tensor_valid(output)    || !output->is_owned      || !output->is_contiguous) return &ERROR_TENSOR; \
+    if (!tensor_valid(output)    || !output->data->is_owner      || !output->is_contiguous) return &ERROR_TENSOR; \
     if (inputs[1]->dtype != output->dtype || inputs[2]->dtype != output->dtype) return &ERROR_TENSOR; \
     if (!tensors_shape_match(inputs[0], output) || !tensors_shape_match(inputs[1], output) || !tensors_shape_match(inputs[2], output)) return &ERROR_TENSOR; \
     extent _n = output->size; \
@@ -172,7 +172,7 @@ ker_t name##_ker = name##_impl;
 
 
 static inline boolean tensor_prepare_output(tensor* t, extent req_size) {
-    if (!t || !t->is_owned || !t->data) return false; 
+    if (!t || !t->data->is_owner || !t->data) return false; 
     extent bytes = req_size * dtype_size(t->dtype);
     if (t->data->size != bytes) {
         mem_loc_t loc = t->data->loc;

@@ -10,9 +10,9 @@ int main() {
     extent rank = 2;
 
     // 1. allocate
-    tensor* tA      = tensor_alloc_matted(rank, shape, REAL32, MEM_HOST);
-    tensor* tB      = tensor_alloc_matted(rank, shape, REAL32, MEM_HOST);
-    tensor* tOut    = tensor_alloc_matted(rank, shape, REAL32, MEM_HOST);
+    tensor* tA      = tensor_alloc(rank, shape, REAL32, MEM_HOST);
+    tensor* tB      = tensor_alloc(rank, shape, REAL32, MEM_HOST);
+    tensor* tOut    = tensor_alloc(rank, shape, REAL32, MEM_HOST);
 
     real32 val_a = 10.5f;
     real32 data_b[16] = {

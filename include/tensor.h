@@ -42,7 +42,6 @@ typedef struct {
     extent       rank;
     dtype_t      dtype;
     extent       size;
-    boolean      is_owned;
     boolean      is_contiguous;
     boolean      error;
 } tensor;
@@ -50,13 +49,11 @@ typedef struct {
 extern  tensor ERROR_TENSOR;
 
 
-typedef tensor* (*ker_t) (tensor* output, const tensor** inputs, const extent num_in, const void* params, const extent num_param);
-typedef boolean constraint_t (tensor* output, const tensor** inputs, const extent num_in, const void* params, const extent num_param);
+typedef tensor* (*ker_t)        (tensor* output, const tensor** inputs, const extent num_in, const void* params, const extent num_param);
+typedef boolean constraint_t    (tensor* output, const tensor** inputs, const extent num_in, const void* params, const extent num_param);
 
 
-tensor* tensor_alloc_matted     (extent rank, const extent* shape, dtype_t dtype, mem_loc_t loc);    // error - error tensor
-tensor* tensor_alloc            (extent rank, const extent* shape, dtype_t dtype);                   // error - error tensor
-tensor* tensor_mat              (tensor* t, mem_loc_t loc);                                          // error - error tensor
+tensor* tensor_alloc            (extent rank, const extent* shape, dtype_t dtype, mem_loc_t loc);    // error - error tensor                                      // error - error tensor
 tensor* tensor_view_from        (tensor* t, const dptr* data, mem_loc_t loc);                        // error - error tensor
 boolean tensor_free             (tensor* t);                                                         // error - 1
 dptr*   tensor_view_to          (const tensor* t, mem_loc_t loc);                                    // error - null
